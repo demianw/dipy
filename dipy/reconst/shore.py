@@ -354,6 +354,13 @@ class ShoreFit():
 
         return np.clip(msd, 0, msd.max())
 
+    def fitted_signal(self):
+        """ The fitted signal.
+        """
+        phi = self.model.cache_get('shore_matrix', key=self.model.gtab)
+        return np.dot(phi, self._shore_coef)
+
+
     @property
     def shore_coeff(self):
         """The SHORE coefficients
