@@ -405,6 +405,7 @@ def shore_matrix(radial_order, zeta, gtab, tau=1 / (4 * np.pi ** 2)):
     """
 
     qvals = np.sqrt(gtab.bvals / (4 * np.pi ** 2 * tau))
+    qvals[gtab.b0s_mask] = 0
     bvecs = gtab.bvecs
 
     qgradients = qvals[:, None] * bvecs
