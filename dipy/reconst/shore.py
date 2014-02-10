@@ -11,6 +11,7 @@ from math import factorial
 
 try:
     import cvxopt
+    import cvxopt.solvers
 except ImportError:
     cvxopt = None
 
@@ -212,24 +213,8 @@ class ShoreModel(Cache):
 
                 cvxopt.solvers.options['show_progress'] = False
 
-                if self.constrain_pdf:
-                    # Create the grid in which to compute the pdf
-                    # radius_max is linear in zeta with radius_max \aprox 0.3 for
-                    # zeta = 1/(2*pi*sqrt(700))
-                    mu = 1. / (2 * np.pi * self.zeta)
-                    radius_max = 0.35 * mu * (2 * np.pi * np.sqrt(700))
-                    print radius_max
-                    psi = self.cache_get('shore_matrix_pdf_nonneg', key=(radius_max))
-                    if psi is None:
-                        rgrid, rtab = create_rspace(self.constraint_gridsize, radius_max)
-                        psi = shore_matrix_pdf(self.radial_order,  self.zeta, rtab)
-                        self.cache_set('shore_matrix_pdf_nonneg', (radius_max), psi)
-
-                    G = cvxopt.matrix(-1. * psi)
-                    h = cvxopt.matrix(np.zeros((psi.shape[0], 1)))
-                else:
-                    G = None
-                    h = None
+                G = None
+                h = None
 
                 A = cvxopt.matrix(M0_mean)
                 b = cvxopt.matrix([1.])
