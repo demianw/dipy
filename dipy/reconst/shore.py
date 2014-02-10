@@ -11,7 +11,14 @@ from math import factorial
 
 try:
     import cvxopt
+<<<<<<< HEAD
     import cvxopt.solvers
+=======
+<<<<<<< HEAD
+=======
+    from cvxopt import matrix, solvers
+>>>>>>> 5063048233c45ff4f44b9a136c76ca040f304e8d
+>>>>>>> c433c9c6a4d94b28e4b3648d47315f8fb66e554f
 except ImportError:
     cvxopt = None
 
@@ -188,6 +195,7 @@ class ShoreModel(Cache):
             signal_0 = 0
 
             for n in range(int(self.radial_order / 2) + 1):
+<<<<<<< HEAD
                 signal_0 += (
                     coef[n] * (genlaguerre(n, 0.5)(0) * (
                         (factorial(n)) / (2 * np.pi * (self.zeta ** 1.5) * gamma(n + 1.5))
@@ -224,6 +232,38 @@ class ShoreModel(Cache):
                 if sol['status'] != 'optimal':
                     warn('Optimization did not find a solution')
 
+=======
+                signal_0 += coef[n] * (genlaguerre(n, 0.5)(0) *
+                    ((factorial(n)) / (2 * np.pi * (self.zeta ** 1.5) * gamma(n + 1.5))) ** 0.5)
+
+            coef = coef / signal_0
+        else:
+            data = data / data[self.gtab.b0s_mask].mean()
+
+            if cvxopt is not None:  # If cvxopt is not available use scipy (~100 times slower)
+                M0 = M[self.gtab.b0s_mask, :]
+                M0_mean = M0.mean(0)[None, :]
+                Mprime = np.r_[M0_mean, M[~self.gtab.b0s_mask, :]]
+                Q = matrix(np.dot(Mprime.T, Mprime) + self.lambdaN * Nshore + self.lambdaL * Lshore)
+
+                data_b0 = data[self.gtab.b0s_mask].mean()
+                data_single_b0 = np.r_[data_b0, data[~self.gtab.b0s_mask]] / data_b0
+                p = matrix(-1 * np.dot(Mprime.T, data_single_b0))
+
+                solvers.options['show_progress'] = False
+
+                G = None
+                h = None
+
+                A = matrix(M0_mean)
+                b = matrix([1.])
+
+                sol = solvers.qp(Q, p, G, h, A, b)
+
+                if sol['status'] != 'optimal':
+                    warn('Optimization did not find a solution')
+
+>>>>>>> 5063048233c45ff4f44b9a136c76ca040f304e8d
                 coef = np.array(sol['x'])[:, 0]
             else:
                 raise ValueError('CVXOPT package needed to enforce constraints')
