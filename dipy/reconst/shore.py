@@ -346,6 +346,36 @@ class ShoreFit():
         odf = np.dot(upsilon, self._shore_coef)
         return odf
 
+    def anisotropic_propagator(self):
+        r"""Returns a propagator with only the anisotropic components
+        """
+        coeff = self._shore_coef.copy()
+        coeff[:self.radial_order / 2 + 1] = 0
+        return ShoreFit(self.model, coeff)
+
+    def isotropic_propagator(self):
+        r"""Returns a propagator with only the isotropic components
+        """
+        coeff = self._shore_coef.copy()
+        coeff[self.radial_order / 2 + 1:] = 0
+        return ShoreFit(self.model, coeff)
+
+    def propagator_anisotropy(self, epsilon=0.4):
+        r"""Implements the propagator anisotropy from [1]_."""
+        iso = self.isotropic_propagator()._shore_coef
+
+        cos_theta = np.nan_to_num(np.dot(self._shore_coef, iso) / np.sqrt(
+            np.dot(self._shore_coef, self.shore_coeff) * np.dot(iso, iso)
+        ))
+
+        sin_theta = np.sqrt(1 - cos_theta ** 2)
+        return sin_theta ** (3 * epsilon) / (
+            1. - 3 * (
+                sin_theta ** epsilon +
+                sin_theta ** (2 * epsilon)
+            )
+        )
+
     def rtop_signal(self):
         r""" Calculates the analytical return to origin probability (RTOP)
         from the signal [1]_.
