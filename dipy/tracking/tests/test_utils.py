@@ -5,12 +5,11 @@ from ...utils.six.moves import xrange
 import numpy as np
 import nose
 from dipy.io.bvectxt import orientation_from_string
-from dipy.tracking._utils import _rmi
 from dipy.tracking.utils import (affine_for_trackvis, connectivity_matrix,
                                  density_map, length, move_streamlines,
                                  ndbincount, reduce_labels,
                                  reorder_voxels_affine, seeds_from_mask,
-                                 target)
+                                 target, _rmi)
 
 import dipy.tracking.metrics as metrix 
 
@@ -409,4 +408,21 @@ def test_seeds_from_mask():
     assert_equal(in_333.sum(), 3 * 4 * 5)
     in_444 = ((seeds > 3.5) & (seeds < 4.5)).all(1)
     assert_equal(in_444.sum(), 3 * 4 * 5)
+
+
+def test_connectivity_matrix_shape():
+    
+    # Labels: z-planes have labels 0,1,2
+    labels = np.zeros((3, 3, 3), dtype=int)
+    labels[:, :, 1] = 1
+    labels[:, :, 2] = 2  
+    # Streamline set, only moves between first two z-planes.
+    streamlines = [np.array([[0., 0., 0.],
+                             [0., 0., 0.5],
+                             [0., 0., 1.]]),
+                   np.array([[0., 1., 1.],
+                             [0., 1., 0.5],
+                             [0., 1., 0.]])]
+    matrix = connectivity_matrix(streamlines, labels, affine=np.eye(4))
+    assert_equal(matrix.shape, (3, 3))
 

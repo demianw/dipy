@@ -10,7 +10,7 @@ from glob import glob
 # update it when the contents of directories change.
 if os.path.exists('MANIFEST'): os.remove('MANIFEST')
 
-import numpy as np
+from numpy.distutils.misc_util import get_info
 
 # Get version and release info, which is all stored in dipy/info.py
 ver_file = os.path.join('dipy', 'info.py')
@@ -73,23 +73,32 @@ from distutils.extension import Extension
 from distutils.command import build_py, build_ext
 
 from cythexts import cyproc_exts, get_pyx_sdist, derror_maker
-from setup_helpers import install_scripts_bat
+from setup_helpers import install_scripts_bat, add_flag_checking, check_npymath
 
 # Define extensions
 EXTS = []
-for modulename, other_sources in (
-    ('dipy.reconst.recspeed', []),
-    ('dipy.reconst.vec_val_sum', []),
-    ('dipy.reconst.quick_squash', []),
-    ('dipy.tracking.distances', []),
-    ('dipy.tracking.vox2track', []),
-    ('dipy.tracking.propspeed', []),
-    ('dipy.denoise.denspeed', [])):
+# Add flags for linking to npymath library
+ext_kwargs = get_info('npymath')
+ext_kwargs['include_dirs'].append('src')
+for modulename, other_sources, language in (
+    ('dipy.reconst.recspeed', [], 'c'),
+    ('dipy.reconst.vec_val_sum', [], 'c'),
+    ('dipy.reconst.quick_squash', [], 'c'),
+    ('dipy.tracking.distances', [], 'c'),
+    ('dipy.tracking.streamlinespeed', [], 'c'),
+    ('dipy.tracking.vox2track', [], 'c'),
+    ('dipy.tracking.propspeed', [], 'c'),
+    ('dipy.denoise.denspeed', [], 'c'),
+    ('dipy.align.vector_fields', [], 'c'),
+    ('dipy.align.sumsqdiff', [], 'c'),
+    ('dipy.align.expectmax', [], 'c'),
+    ('dipy.align.crosscorr', [], 'c'),
+    ('dipy.align.bundlemin', [], 'c')):
+
     pyx_src = pjoin(*modulename.split('.')) + '.pyx'
-    EXTS.append(Extension(modulename,[pyx_src] + other_sources,
-                          include_dirs = [np.get_include(), "src"],
-                          extra_compile_args = ['-fopenmp'],
-                          extra_link_args = ['-fopenmp']))
+    EXTS.append(Extension(modulename, [pyx_src] + other_sources,
+                          language=language,
+                          **ext_kwargs))
 
 
 # Do our own build and install time dependency checking. setup.py gets called in
@@ -110,7 +119,15 @@ else: # We have nibabel
     pybuilder = get_comrec_build('dipy')
     # Cython is a dependency for building extensions, iff we don't have stamped
     # up pyx and c files.
-    extbuilder = cyproc_exts(EXTS, CYTHON_MIN_VERSION, 'pyx-stamps')
+    build_ext = cyproc_exts(EXTS, CYTHON_MIN_VERSION, 'pyx-stamps')
+    # Add openmp flags if they work
+    omp_test_c = """#include <omp.h>
+    int main(int argc, char** argv) { return(0); }"""
+    extbuilder = add_flag_checking(
+        build_ext, [[['-fopenmp'], ['-fopenmp'], omp_test_c, 'HAVE_OPENMP']])
+    # Fix npymath libraries for Windows
+    if os.name == 'nt':
+        extbuilder = check_npymath(extbuilder)
 
 # Installer that checks for install-time dependencies
 class installer(install.install):
@@ -148,10 +165,12 @@ def main(**extra_args):
           packages     = ['dipy',
                           'dipy.tests',
                           'dipy.align',
+                          'dipy.align.tests',
                           'dipy.core',
                           'dipy.core.tests',
                           'dipy.tracking',
                           'dipy.tracking.tests',
+                          'dipy.tracking.benchmarks',
                           'dipy.reconst',
                           'dipy.reconst.benchmarks',
                           'dipy.reconst.tests',
@@ -174,6 +193,7 @@ def main(**extra_args):
                           'dipy.sims.tests',
                           'dipy.denoise',
                           'dipy.denoise.tests'],
+
           ext_modules = EXTS,
           # The package_data spec has no effect for me (on python 2.6) -- even
           # changing to data_files doesn't get this stuff included in the source

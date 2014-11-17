@@ -6,6 +6,7 @@ from __future__ import division, print_function, absolute_import
 import numpy as np
 from nose.tools import (assert_true, assert_equal,
                         assert_almost_equal, assert_raises)
+import numpy.testing as npt
 from numpy.testing import assert_array_equal, assert_array_almost_equal, assert_
 import nibabel as nib
 
@@ -27,6 +28,14 @@ import dipy.core.gradients as grad
 import dipy.core.sphere as dps
 
 from dipy.sims.voxel import single_tensor
+
+def test_roll_evals():
+    """
+
+    """
+    # Just making sure this never passes through
+    weird_evals = np.array([1, 0.5])
+    npt.assert_raises(ValueError, dti._roll_evals, weird_evals)
 
 
 def test_tensor_algebra():
@@ -55,6 +64,7 @@ def test_TensorModel():
 
     # Check that the multivoxel case works:
     dtifit = dm.fit(data)
+
     # And smoke-test that all these operations return sensibly-shaped arrays:
     assert_equal(dtifit.fa.shape, data.shape[:3])
     assert_equal(dtifit.ad.shape, data.shape[:3])
@@ -65,14 +75,17 @@ def test_TensorModel():
     assert_equal(dtifit.linearity.shape, data.shape[:3])
     assert_equal(dtifit.planarity.shape, data.shape[:3])
     assert_equal(dtifit.sphericity.shape, data.shape[:3])
-    
+
+    # Test for the shape of the mask
+    assert_raises(ValueError, dm.fit, np.ones((10, 10, 3)), np.ones((3,3)))
+
     # Make some synthetic data
     b0 = 1000.
     bvecs, bvals = read_bvec_file(get_data('55dir_grad.bvec'))
     gtab = grad.gradient_table_from_bvals_bvecs(bvals, bvecs.T)
     # The first b value is 0., so we take the second one:
     B = bvals[1]
-    #Scale the eigenvalues and tensor by the B value so the units match
+    # Scale the eigenvalues and tensor by the B value so the units match
     D = np.array([1., 1., 1., 0., 0., 1., -np.log(b0) * B]) / B
     evals = np.array([2., 1., 0.]) / B
     md = evals.mean()
@@ -80,9 +93,9 @@ def test_TensorModel():
     A_squiggle = tensor - (1 / 3.0) * np.trace(tensor) * np.eye(3)
     mode = 3 * np.sqrt(6) * np.linalg.det(A_squiggle / np.linalg.norm(A_squiggle))
     evecs = np.linalg.eigh(tensor)[1]
-    #Design Matrix
+    # Design Matrix
     X = dti.design_matrix(gtab)
-    #Signals
+    # Signals
     Y = np.exp(np.dot(X, D))
     assert_almost_equal(Y[0], b0)
     Y.shape = (-1,) + Y.shape
@@ -160,7 +173,7 @@ def test_diffusivities():
     lin = linearity(dmfit.evals)
     plan = planarity(dmfit.evals)
     spher = sphericity(dmfit.evals)
-    
+
     assert_almost_equal(md, (0.0015 + 0.0003 + 0.0001) / 3)
     assert_almost_equal(Trace, (0.0015 + 0.0003 + 0.0001))
     assert_almost_equal(ad, 0.0015)
@@ -177,8 +190,11 @@ def test_color_fa():
     fa = fractional_anisotropy(dmfit.evals)
     cfa = color_fa(fa, dmfit.evecs)
 
-    # evecs should be of shape (fa, 3, 3)
     fa = np.ones((3, 3, 3))
+    # evecs should be of shape (fa, 3, 3)
+    evecs = np.zeros(fa.shape + (3,2))
+    npt.assert_raises(ValueError, color_fa, fa, evecs)
+
     evecs = np.zeros(fa.shape + (3, 3))
     evecs[..., :, :] = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
 
@@ -245,8 +261,12 @@ def test_WLS_and_LS_fit():
     assert_almost_equal(Y[0], b0)
     Y.shape = (-1,) + Y.shape
 
-
     ### Testing WLS Fit on Single Voxel ###
+    # If you do something wonky, you should get an error:
+    #Estimate tensor from test signals
+    model = TensorModel(gtab, min_signal=-1, fit_method='WLS')
+    npt.assert_raises(ValueError, model.fit, Y)
+
     #Estimate tensor from test signals
     model = TensorModel(gtab, min_signal=1e-8, fit_method='WLS')
     tensor_est = model.fit(Y)
@@ -355,16 +375,23 @@ def test_from_lower_triangular():
 
 
 def test_all_constant():
-    """
-
-    """
     bvecs, bvals = read_bvec_file(get_data('55dir_grad.bvec'))
     gtab = grad.gradient_table_from_bvals_bvecs(bvals, bvecs.T)
-    fit_methods = ['LS', 'OLS', 'NNLS']
+    fit_methods = ['LS', 'OLS', 'NNLS', 'RESTORE']
     for fit_method in fit_methods:
         dm = dti.TensorModel(gtab)
-        assert_almost_equal(dm.fit(np.zeros(bvals.shape[0])).fa, 0)
         assert_almost_equal(dm.fit(100 * np.ones(bvals.shape[0])).fa, 0)
+        # Doesn't matter if the signal is smaller than 1:
+        assert_almost_equal(dm.fit(0.4 * np.ones(bvals.shape[0])).fa, 0)
+
+
+def test_all_zeros():
+    bvecs, bvals = read_bvec_file(get_data('55dir_grad.bvec'))
+    gtab = grad.gradient_table_from_bvals_bvecs(bvals, bvecs.T)
+    fit_methods = ['LS', 'OLS', 'NNLS', 'RESTORE']
+    for fit_method in fit_methods:
+        dm = dti.TensorModel(gtab)
+        assert_raises(ValueError, dm.fit, np.zeros(bvals.shape[0]))
 
 
 def test_mask():
@@ -382,6 +409,7 @@ def test_mask():
     assert_array_equal(dtifit_w_mask.fa[~mask], 0)
     # Except for the one voxel that was selected by the mask:
     assert_almost_equal(dtifit_w_mask.fa[0, 0, 0], dtifit.fa[0, 0, 0])
+
 
 def test_nnls_jacobian_fucn():
     b0 = 1000.
@@ -448,12 +476,27 @@ def test_nlls_fit_tensor():
      assert_array_almost_equal(tensor_est.quadratic_form[0], tensor)
      assert_almost_equal(tensor_est.md[0], md)
 
-     # Using the gmm weighting scheme:
-     tensor_model = dti.TensorModel(gtab, fit_method='NLLS', weighting='gmm')
+
+     # You can also do this without the Jacobian (though it's slower):
+     tensor_model = dti.TensorModel(gtab, fit_method='NLLS', jac=False)
+     tensor_est = tensor_model.fit(Y)
      assert_equal(tensor_est.shape, Y.shape[:-1])
      assert_array_almost_equal(tensor_est.evals[0], evals)
      assert_array_almost_equal(tensor_est.quadratic_form[0], tensor)
      assert_almost_equal(tensor_est.md[0], md)
+
+
+     # Using the gmm weighting scheme:
+     tensor_model = dti.TensorModel(gtab, fit_method='NLLS', weighting='gmm')
+     tensor_est = tensor_model.fit(Y)
+     assert_equal(tensor_est.shape, Y.shape[:-1])
+     assert_array_almost_equal(tensor_est.evals[0], evals)
+     assert_array_almost_equal(tensor_est.quadratic_form[0], tensor)
+     assert_almost_equal(tensor_est.md[0], md)
+
+     # If you use sigma weighting, you'd better provide a sigma:
+     tensor_model = dti.TensorModel(gtab, fit_method='NLLS', weighting='sigma')
+     npt.assert_raises(ValueError, tensor_model.fit, Y)
 
      # Use NLLS with some actual 4D data:
      data, bvals, bvecs = get_data('small_25')
@@ -488,16 +531,26 @@ def test_restore():
      Y = np.exp(np.dot(X,D))
      Y.shape = (-1,) + Y.shape
      for drop_this in range(1, Y.shape[-1]):
-         # RESTORE estimates should be robust to dropping
-         this_y = Y.copy()
-         this_y[:, drop_this] = 1.0
-         tensor_model = dti.TensorModel(gtab, fit_method='restore',
-                                        sigma=67.0)
+         for jac in [True, False]:
+             # RESTORE estimates should be robust to dropping
+             this_y = Y.copy()
+             this_y[:, drop_this] = 1.0
+             for sigma in [67.0, np.ones(this_y.shape[-1]) *67.0]:
+                 tensor_model = dti.TensorModel(gtab, fit_method='restore',
+                                            jac=jac,
+                                            sigma=67.0)
 
-         tensor_est = tensor_model.fit(this_y)
-         assert_array_almost_equal(tensor_est.evals[0], evals, decimal=3)
-         assert_array_almost_equal(tensor_est.quadratic_form[0], tensor,
-                                   decimal=3)
+                 tensor_est = tensor_model.fit(this_y)
+                 assert_array_almost_equal(tensor_est.evals[0], evals, decimal=3)
+                 assert_array_almost_equal(tensor_est.quadratic_form[0], tensor,
+                                       decimal=3)
+
+
+
+     # If sigma is very small, it still needs to work:
+     tensor_model = dti.TensorModel(gtab, fit_method='restore', sigma=0.0001)
+     tensor_model.fit(Y.copy())
+
 
 def test_adc():
     """
@@ -509,7 +562,7 @@ def test_adc():
     mask[0, 0, 0] = True
     dtifit = dm.fit(data)
     sphere = create_unit_sphere(4)
-    
+
     # The ADC in the principal diffusion direction should be equal to the AD in
     # each voxel:
 
@@ -517,13 +570,14 @@ def test_adc():
     sphere_pdd0 = dps.Sphere(x=pdd0[0], y=pdd0[1], z=pdd0[2])
     assert_array_almost_equal(dtifit.adc(sphere_pdd0)[0,0,0],
                             dtifit.ad[0,0,0], decimal=5)
-        
-    
+
+
     # Test that it works for cases in which the data is 1D
     dtifit = dm.fit(data[0,0,0])
     sphere_pdd0 = dps.Sphere(x=pdd0[0], y=pdd0[1], z=pdd0[2])
     assert_array_almost_equal(dtifit.adc(sphere_pdd0),
                         dtifit.ad, decimal=5)
+
 
 def test_predict():
     """
@@ -541,12 +595,11 @@ def test_predict():
 
     dm = dti.TensorModel(gtab, 'LS')
     dmfit = dm.fit(S)
-    
     assert_array_almost_equal(dmfit.predict(gtab, S0=100), S)
+    assert_array_almost_equal(dm.predict(dmfit.model_params, S0=100), S)
 
     data, gtab = dsi_voxels()
     dtim = dti.TensorModel(gtab)
     dtif = dtim.fit(data)
     S0 = np.mean(data[...,gtab.b0s_mask], -1)
     p = dtif.predict(gtab, S0)
-

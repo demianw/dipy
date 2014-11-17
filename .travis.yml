@@ -23,7 +23,7 @@ install:
     # Cython easy_install breaks with error about refnanny.c; maybe something
     # to do with having a previous cython version;
     # http://mail.python.org/pipermail//cython-devel/2012-April/002344.html
-    - curl -O http://www.cython.org/release/Cython-0.18.zip
+    - curl -O http://cython.org/release/Cython-0.18.zip
     - unzip Cython-0.18.zip
     - cd Cython-0.18
     - sudo python$PYSUF setup.py install
@@ -38,6 +38,7 @@ install:
             sudo pip install cvxopt ;
        else
             sudo apt-get install python-cvxopt ;
+            sudo pip install coverage ;
        fi
        # Dipy
     - $PYTHON setup.py build
@@ -46,4 +47,9 @@ script:
     # Change into an innocuous directory and find tests from installation
     - mkdir for_test
     - cd for_test
-    - nosetests$PYSUF --with-doctest `$PYTHON -c "import os; import dipy; print(os.path.dirname(dipy.__file__))"`
+    - if [ "${PYTHON}" == "python3" ]; then
+        nosetests$PYSUF --with-doctest `$PYTHON -c "import os; import dipy; print(os.path.dirname(dipy.__file__))"`	;
+      else
+        cp ../.coveragerc . ;
+        nosetests$PYSUF --with-doctest --with-coverage `$PYTHON -c "import os; import dipy; print(os.path.dirname(dipy.__file__))"` ;
+      fi
